@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Othello Pro — classic Reversi against a minimax AI with three difficulty levels, smooth 3D flip animations and local stats. Free single-file HTML5 board game.">
+<title>Othello Pro — Reversi vs AI</title>
+<script>
+// 平台 SDK 按域名条件加载（独立运行时完全不加载，游戏行为不变）
+(function () {
+  var host = location.hostname || "";
+  try {
+    if (host.indexOf("crazygames") !== -1) {
+      var s1 = document.createElement("script");
+      s1.src = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
+      s1.onload = function () {
+        if (window.CrazyGames && window.CrazyGames.SDK) {
+          window.CrazyGames.SDK.init().then(function () {
+            try { window.CrazyGames.SDK.game.loadingStart(); } catch (e) {}
+            window.addEventListener("load", function () { try { window.CrazyGames.SDK.game.loadingStop(); } catch (e) {} });
+          }).catch(function () {});
+        }
+      };
+      document.head.appendChild(s1);
+      window.__portal = "crazygames";
+    } else if (host.indexOf("gamedistribution") !== -1 || host.indexOf("html5.gamedistribution.com") !== -1 || host.indexOf("gd.games") !== -1) {
+      var s2 = document.createElement("script");
+      s2.src = "https://sdk.gamedistribution.com/v2/main.min.js";
+      document.head.appendChild(s2);
+      window.__portal = "gamedistribution";
+    }
+  } catch (e) {}
+})();
+</script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#0a1410; font-family:-apple-system,"Segoe UI","PingFang SC",sans-serif; }
+  #wrap { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #hud { width:100%; max-width:480px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px 6px; color:#e9ecdf; }
+  .hudBox { min-width:86px; display:flex; align-items:center; gap:7px; }
+  .hudBox.right { justify-content:flex-end; min-width:86px; }
+  .discDot { width:15px; height:15px; border-radius:50%; display:inline-block; flex:none; }
+  .discDot.black { background:radial-gradient(circle at 34% 30%, #5a6a60, #0d1512 72%); box-shadow:0 0 0 1px rgba(0,0,0,.6); }
+  .discDot.white { background:radial-gradient(circle at 34% 30%, #fffef4, #cfc7aa 78%); box-shadow:0 0 0 1px rgba(90,80,55,.5); }
+  #cntB, #cntW { font-size:19px; font-weight:800; min-width:26px; text-align:center; }
+  #cntB { color:#cfe3d2; } #cntW { color:#f3eeda; }
+  #turn { flex:1; text-align:center; font-size:14px; font-weight:800; letter-spacing:1px; white-space:nowrap; }
+  #turn.you { color:#f0d78a; text-shadow:0 0 12px rgba(240,215,138,.45); }
+  #turn.ai  { color:#8fd8b2; text-shadow:0 0 12px rgba(143,216,178,.45); }
+  #turn.off { color:#6d7f70; }
+  #turn.dots::after { content:""; animation:otdots 1.2s infinite steps(1); }
+  @keyframes otdots { 0%{content:"";} 25%{content:".";} 50%{content:"..";} 75%{content:"...";} }
+  .iconBtn { width:36px; height:36px; border-radius:50%; border:1px solid #2c4234; background:#12241a; color:#cfe3d2; font-size:15px; line-height:1; cursor:pointer; flex:none; }
+  .iconBtn.off { color:#54655a; text-decoration:line-through; }
+  .stage { position:relative; }
+  canvas { display:block; border-radius:14px; touch-action:none; }
+  .overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(4,10,7,.82); z-index:5; border-radius:14px; }
+  .overlay.show { display:flex; }
+  .panel { background:#0f2018; border:1px solid #2c4234; border-radius:18px; padding:20px 24px; text-align:center; color:#fff; width:min(90%, 330px); max-height:98%; overflow:auto; }
+  .panel h1 { font-size:25px; letter-spacing:3px; margin-bottom:3px;
+    background:linear-gradient(90deg,#f0d78a,#8fd8b2); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .panel .sub { color:#9db3a2; font-size:12px; margin-bottom:6px; }
+  .segLabel { font-size:10px; letter-spacing:2px; color:#7e9484; margin:11px 0 5px; font-weight:700; }
+  .seg { display:flex; gap:6px; }
+  .seg button { flex:1; padding:9px 0; border-radius:10px; border:1px solid #2c4234; background:#0c1a12; color:#aebfae; font-size:13px; font-weight:700; cursor:pointer; }
+  .seg button.on { border-color:#f0d78a; color:#fff4d6; background:rgba(240,215,138,.12); }
+  .btn { border:none; border-radius:12px; padding:12px 26px; font-size:15px; font-weight:800; cursor:pointer; color:#10201a;
+    background:linear-gradient(135deg,#f0d78a,#8fd8b2); margin-top:14px; }
+  .btn.ghost { background:#0c1a12; border:1px solid #2c4234; color:#aebfae; }
+  .btn:active { transform:scale(.97); }
+  .btnRow { display:flex; gap:10px; justify-content:center; }
+  #resTitle { font-size:26px; font-weight:900; margin-bottom:4px; letter-spacing:1px; }
+  #resTitle.win  { color:#f0d78a; text-shadow:0 0 14px rgba(240,215,138,.6); }
+  #resTitle.lose { color:#e08a8a; text-shadow:0 0 14px rgba(224,138,138,.5); }
+  #resTitle.draw { color:#a8c8b0; }
+  #resScore { font-size:14px; color:#dfe8d8; font-weight:700; margin-bottom:10px; }
+  #barWrap { display:flex; height:16px; border-radius:8px; overflow:hidden; border:1px solid #2c4234; margin:0 6px 6px; }
+  #barB { background:linear-gradient(180deg,#3c4a42,#111c16); }
+  #barW { background:linear-gradient(180deg,#f7f2df,#c9c1a4); }
+  #resRecord { font-size:13px; color:#aebfae; font-weight:700; margin-bottom:4px; }
+  #footer { color:#4d5f52; font-size:11px; padding:6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="hudBox"><span class="discDot black"></span><span id="cntB">2</span></div>
+    <div id="turn" class="off">OTHELLO PRO</div>
+    <div class="hudBox right">
+      <span id="cntW">2</span><span class="discDot white"></span>
+      <button class="iconBtn" id="hintBtn" aria-label="Toggle move hints">&#9678;</button>
+      <button class="iconBtn" id="muteBtn" aria-label="Toggle sound">&#9834;</button>
+    </div>
+  </div>
+  <div class="stage">
+    <canvas id="game"></canvas>
+    <div class="overlay show" id="menu"><div class="panel">
+      <h1>OTHELLO PRO</h1>
+      <div class="sub">Sandwich discs to flip them. Most discs wins.</div>
+      <div class="segLabel">DIFFICULTY</div>
+      <div class="seg" id="segDiff">
+        <button data-v="easy">Easy</button><button data-v="normal" class="on">Normal</button><button data-v="hard">Hard</button>
+      </div>
+      <div id="menuRecord" class="sub" style="margin-top:12px"></div>
+      <button class="btn" id="startBtn">START GAME</button>
+      <div class="sub" style="margin-top:12px">You play black and move first.</div>
+    </div></div>
+    <div class="overlay" id="result"><div class="panel">
+      <h2 id="resTitle">YOU WIN</h2>
+      <div id="resScore">BLACK 0 &middot; 0 WHITE</div>
+      <div id="barWrap"><div id="barB"></div><div id="barW"></div></div>
+      <div id="resRecord"></div>
+      <div class="btnRow">
+        <button class="btn" id="againBtn">PLAY AGAIN</button>
+        <button class="btn ghost" id="menuBtn">MENU</button>
+      </div>
+    </div></div>
+  </div>
+  <div id="footer">Othello Pro — a free strategy board game</div>
+</div>
+<script>
+"use strict";
+/* ================= 画布与自适应 ================= */
+var W = 480, H = 464;
+var CELL = 54, BRD = 432, BX = 24, BY = 16;        // 棋盘面板几何
+var R = 21;                                        // 棋子半径
+var FLIP_DUR = 0.3, STAGGER = 0.06, PLACE_DUR = 0.14;
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = W * dpr; canvas.height = H * dpr;
+ctx.scale(dpr, dpr);
+function fitCanvas() {                             // 保持纵横比缩放，兼容竖屏/横屏/窄屏
+  var maxW = Math.min(window.innerWidth - 12, W);
+  var maxH = window.innerHeight - 116;
+  if (maxH < 240) maxH = 240;
+  var s = Math.min(maxW / W, maxH / H);
+  if (s > 1) s = 1;
+  canvas.style.width = Math.round(W * s) + "px";
+  canvas.style.height = Math.round(H * s) + "px";
+}
+window.addEventListener("resize", fitCanvas);
+fitCanvas();
+
+/* ================= 状态 ================= */
+var HUMAN = 1, AIP = 2;                            // 1 黑（玩家，先手）/ 2 白（AI）
+var phase = "menu";            // menu | human | anim | ai | over
+var board = null;              // 64 长度数组：0 空 / 1 黑 / 2 白，idx = r*8+c
+var difficulty = "normal", muted = false, hintOn = true;
+var lastMove = -1, passStreak = 0, flowId = 0;
+var anims = [], ripples = [], placeAnim = null, passMsg = null, flashCell = null;
+var hoverCell = -1, kbCell = -1;
+var stats = { easy:{w:0,l:0,d:0}, normal:{w:0,l:0,d:0}, hard:{w:0,l:0,d:0} };
+try { muted = localStorage.getItem("ot_muted") === "1"; } catch (e) {}
+try { hintOn = localStorage.getItem("ot_hints") !== "0"; } catch (e) {}
+try {
+  var rawStats = JSON.parse(localStorage.getItem("ot_stats") || "null");
+  if (rawStats && rawStats.easy && rawStats.normal && rawStats.hard) stats = rawStats;
+} catch (e) {}
+try {
+  var d0 = localStorage.getItem("ot_diff");
+  if (d0 === "easy" || d0 === "normal" || d0 === "hard") difficulty = d0;
+} catch (e) {}
+function saveStats() { try { localStorage.setItem("ot_stats", JSON.stringify(stats)); } catch (e) {} }
+function saveMuted() { try { localStorage.setItem("ot_muted", muted ? "1" : "0"); } catch (e) {} }
+function saveHints() { try { localStorage.setItem("ot_hints", hintOn ? "1" : "0"); } catch (e) {} }
+function saveDiff() { try { localStorage.setItem("ot_diff", difficulty); } catch (e) {} }
+
+/* ================= WebAudio 合成音效（无外部资源） ================= */
+var actx = null;
+function ensureAudio() {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+  } catch (e) {}
+}
+function beep(freq, dur, type, gainv, delay) {
+  if (muted) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    var t0 = actx.currentTime + (delay || 0);
+    var o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(gainv || 0.1, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  } catch (e) {}
+}
+function sClick()   { beep(640, 0.05, "sine", 0.06); }
+function sPlace()   { beep(170, 0.09, "sine", 0.16); beep(620, 0.03, "square", 0.03); }
+function sFlip(k, delay) { beep(360 + Math.min(k, 6) * 46, 0.07, "triangle", 0.07, delay || 0); }
+function sPass()    { beep(330, 0.12, "sine", 0.08, 0); beep(262, 0.16, "sine", 0.08, 0.13); }
+function sInvalid() { beep(95, 0.15, "square", 0.07); }
+function sWin()     { beep(523.25,0.15,"triangle",0.12,0); beep(659.25,0.15,"triangle",0.12,0.11); beep(783.99,0.15,"triangle",0.12,0.22); beep(1046.5,0.3,"triangle",0.13,0.33); }
+function sLose()    { beep(392,0.18,"sawtooth",0.07,0); beep(311.13,0.18,"sawtooth",0.07,0.15); beep(246.94,0.32,"sawtooth",0.07,0.3); }
+function sDraw()    { beep(440,0.14,"sine",0.1,0); beep(440,0.2,"sine",0.1,0.18); }
+
+/* __AI_START__ */
+// ================= 黑白棋规则引擎 + AI（纯函数区，无 DOM 依赖，便于 Node 抽取单测） =================
+// board：64 长度数组，idx = r*8+c（r=0 顶行）；0 空 / 1 黑 / 2 白
+var OB_DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+// 经典位置权重表：角最高、X/C 格负值（idx = r*8+c 展平）
+var OB_W = [
+  120, -20,  20,   5,   5,  20, -20, 120,
+  -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+   20,  -5,  15,   3,   3,  15,  -5,  20,
+    5,  -5,   3,   3,   3,   3,  -5,   5,
+    5,  -5,   3,   3,   3,   3,  -5,   5,
+   20,  -5,  15,   3,   3,  15,  -5,  20,
+  -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+  120, -20,  20,   5,   5,  20, -20, 120
+];
+
+function obNewBoard() {                            // 标准开局：d4/e5 白，d5/e4 黑
+  var b = new Array(64);
+  for (var i = 0; i < 64; i++) b[i] = 0;
+  b[27] = 2; b[28] = 1; b[35] = 1; b[36] = 2;
+  return b;
+}
+// (idx, p) 落子后将被翻转的全部子（分配版；空格/非法步返回 []）
+function obFlips(board, idx, p) {
+  var out = [];
+  if (board[idx] !== 0) return out;
+  var o = 3 - p, r0 = (idx / 8) | 0, c0 = idx % 8;
+  for (var d = 0; d < 8; d++) {
+    var dr = OB_DIRS[d][0], dc = OB_DIRS[d][1], r = r0 + dr, c = c0 + dc, run = null;
+    while (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === o) { (run || (run = [])).push(r * 8 + c); r += dr; c += dc; }
+    if (run && r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === p) out = out.concat(run);
+  }
+  return out;
+}
+// 布尔版（搜索/合法步热路径，零分配）
+function obHasFlip(board, idx, p) {
+  if (board[idx] !== 0) return false;
+  var o = 3 - p, r0 = (idx / 8) | 0, c0 = idx % 8;
+  for (var d = 0; d < 8; d++) {
+    var dr = OB_DIRS[d][0], dc = OB_DIRS[d][1], r = r0 + dr, c = c0 + dc, k = 0;
+    while (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === o) { r += dr; c += dc; k++; }
+    if (k && r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === p) return true;
+  }
+  return false;
+}
+function obLegalMoves(board, p) {
+  var m = [];
+  for (var i = 0; i < 64; i++) if (board[i] === 0 && obHasFlip(board, i, p)) m.push(i);
+  return m;
+}
+// 落子并翻转（原地修改）；非法步返回 null，合法返回翻转列表
+function obApply(board, idx, p) {
+  var f = obFlips(board, idx, p);
+  if (!f.length) return null;
+  board[idx] = p;
+  for (var i = 0; i < f.length; i++) board[f[i]] = p;
+  return f;
+}
+// 搜索用落子（翻转写入 buf，返回翻转数；非法返回 -1），可 obUndoMove 精确复原
+function obMakeMove(board, idx, p, buf) {
+  if (board[idx] !== 0) return -1;
+  var o = 3 - p, r0 = (idx / 8) | 0, c0 = idx % 8, n = 0;
+  for (var d = 0; d < 8; d++) {
+    var dr = OB_DIRS[d][0], dc = OB_DIRS[d][1], r = r0 + dr, c = c0 + dc;
+    while (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === o) { r += dr; c += dc; }
+    if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r * 8 + c] === p && (r - dr !== r0 || c - dc !== c0)) {
+      var rr = r - dr, cc = c - dc;
+      while (rr !== r0 || cc !== c0) { buf[n++] = rr * 8 + cc; rr -= dr; cc -= dc; }
+    }
+  }
+  if (n === 0) return -1;
+  board[idx] = p;
+  for (var i = 0; i < n; i++) board[buf[i]] = p;
+  return n;
+}
+function obUndoMove(board, idx, p, buf, n) {
+  board[idx] = 0;
+  var o = 3 - p;
+  for (var i = 0; i < n; i++) board[buf[i]] = o;
+}
+function obCounts(board) {
+  var b = 0, w = 0, i;
+  for (i = 0; i < 64; i++) { if (board[i] === 1) b++; else if (board[i] === 2) w++; }
+  return { b: b, w: w, e: 64 - b - w };
+}
+// 局面评估：p 视角，正值对 p 有利 = 位置权重 + 行动力（残局加子差）
+function obEvaluate(board, p) {
+  var o = 3 - p, pos = 0, my = 0, op = 0, i, v;
+  for (i = 0; i < 64; i++) {
+    v = board[i];
+    if (v === p) { pos += OB_W[i]; my++; }
+    else if (v === o) { pos -= OB_W[i]; op++; }
+  }
+  var myMob = 0, opMob = 0;
+  for (i = 0; i < 64; i++) {
+    if (board[i] !== 0) continue;
+    if (obHasFlip(board, i, p)) myMob++;
+    if (obHasFlip(board, i, o)) opMob++;
+  }
+  var score = pos + 9 * (myMob - opMob);
+  if (64 - my - op <= 12) score += 4 * (my - op);   // 残局子差权重上升
+  return score;
+}
+function obTerminal(board, p) {                    // 双方均无子可下 → 终局精确分
+  var c = obCounts(board), diff = p === 1 ? c.b - c.w : c.w - c.b;
+  return diff > 0 ? 100000 + diff : (diff < 0 ? -100000 + diff : 0);
+}
+// 生成合法步（按位置权重降序静态排序，角优先）
+function obGenMoves(board, p, out) {
+  var n = 0, i;
+  for (i = 0; i < 64; i++) if (board[i] === 0 && obHasFlip(board, i, p)) out[n++] = i;
+  for (var a = 1; a < n; a++) {
+    var v = out[a], w = OB_W[v], b = a - 1;
+    while (b >= 0 && OB_W[out[b]] < w) { out[b + 1] = out[b]; b--; }
+    out[b + 1] = v;
+  }
+  return n;
+}
+// 每层预分配缓冲（pass 不减深度时 ply 可能较深，多备一些）
+var OB_BUF = (function () { var a = [], d; for (d = 0; d < 144; d++) a.push({ mv: new Array(32), fl: new Array(24) }); return a; })();
+var obNodes = 0, obDeadline = 0, obAborted = false;
+
+function obSearch(board, p, depth, alpha, beta, ply) {
+  obNodes++;
+  if ((obNodes & 127) === 0 && obDeadline && Date.now() > obDeadline) { obAborted = true; return 0; }
+  if (depth === 0) return obEvaluate(board, p);
+  var bu = OB_BUF[ply < 144 ? ply : 143];
+  var n = obGenMoves(board, p, bu.mv);
+  if (n === 0) {
+    // 无子可下：对方也无子 → 终局；否则强制 pass（深度不减，对方必有棋可下，不会死循环）
+    if (obGenMoves(board, 3 - p, bu.fl) === 0) return obTerminal(board, p);
+    return -obSearch(board, 3 - p, depth, -beta, -alpha, ply + 1);
+  }
+  var best = -Infinity;
+  for (var m = 0; m < n; m++) {
+    var idx = bu.mv[m];
+    var nf = obMakeMove(board, idx, p, bu.fl);
+    var sc = -obSearch(board, 3 - p, depth - 1, -beta, -alpha, ply + 1);
+    obUndoMove(board, idx, p, bu.fl, nf);
+    if (obAborted) return 0;
+    if (sc > best) best = sc;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+// 根搜索：返回 { move, score, nodes, aborted }
+function obBestMove(board, p, maxDepth, deadline) {
+  var moves = obLegalMoves(board, p);
+  if (moves.length === 0) return { move: -1, score: 0, nodes: 0, aborted: false };
+  if (moves.length === 1) return { move: moves[0], score: 0, nodes: 0, aborted: false };
+  moves.sort(function (a, b) { return OB_W[b] - OB_W[a]; });
+  obNodes = 0; obAborted = false; obDeadline = deadline || 0;
+  var fl = new Array(24), best = moves[0], alpha = -Infinity;
+  for (var m = 0; m < moves.length; m++) {
+    var idx = moves[m];
+    var nf = obMakeMove(board, idx, p, fl);
+    var sc = -obSearch(board, 3 - p, maxDepth - 1, -Infinity, -alpha, 1);
+    obUndoMove(board, idx, p, fl, nf);
+    if (obAborted) break;                          // 超时：保留已完成步的最好结果
+    if (sc > alpha) { alpha = sc; best = idx; }
+  }
+  return { move: best, score: alpha, nodes: obNodes, aborted: obAborted };
+}
+// 贪心：位置权重表 + 翻转数（Easy 的 20% 分支 / Normal 全程）
+function obGreedy(board, p, moves) {
+  var fl = new Array(24), bestM = moves[0], bestS = -Infinity;
+  for (var i = 0; i < moves.length; i++) {
+    var n = obMakeMove(board, moves[i], p, fl);
+    var s = OB_W[moves[i]] + 2 * n;
+    obUndoMove(board, moves[i], p, fl, n);
+    if (s > bestS) { bestS = s; bestM = moves[i]; }
+  }
+  return bestM;
+}
+// 按难度选步（入口）：easy 80% 随机 + 20% 贪心 / normal 贪心 / hard 迭代加深 2→4 层 minimax
+function obChooseMove(board, p, difficulty) {
+  var moves = obLegalMoves(board, p);
+  if (moves.length === 0) return -1;
+  if (difficulty === "easy") {
+    if (Math.random() < 0.2) return obGreedy(board, p, moves);
+    return moves[(Math.random() * moves.length) | 0];
+  }
+  if (difficulty === "normal") return obGreedy(board, p, moves);
+  // hard：深度随空格数调整（≥48 空 2 层 / ≥28 空 3 层 / 其余 4 层），共享 800ms 截止 → 单步 ≤ 1 秒
+  var empt = obCounts(board).e;
+  var base = empt >= 48 ? 2 : (empt >= 28 ? 3 : 4);
+  var deadline = Date.now() + 800, best = null;
+  for (var d = 2; d <= base; d++) {
+    var r = obBestMove(board, p, d, deadline);
+    if (!r.aborted) best = r;
+    if (r.aborted || Date.now() >= deadline || Math.abs(r.score) >= 100000) break;
+  }
+  if (!best) best = obBestMove(board, p, 1, 0);    // 极慢设备兜底
+  return best.move;
+}
+/* __AI_END__ */
+
+/* ================= 棋盘面板（离屏一次绘制：墨绿呢绒 + 网格 + 星位） ================= */
+var boardLayer = document.createElement("canvas");
+boardLayer.width = W * dpr; boardLayer.height = H * dpr;
+(function paintBoard() {
+  var b = boardLayer.getContext("2d");
+  b.scale(dpr, dpr);
+  var bg = b.createLinearGradient(0, 0, 0, H);     // 画布底色
+  bg.addColorStop(0, "#0e1f17"); bg.addColorStop(1, "#081310");
+  b.fillStyle = bg; b.fillRect(0, 0, W, H);
+  var g = b.createRadialGradient(W / 2, BY + BRD / 2, 40, W / 2, BY + BRD / 2, 330);   // 呢绒
+  g.addColorStop(0, "#2c6e50"); g.addColorStop(1, "#17452d");
+  function rrFelt(c, x, y, w, h, rad) {
+    c.beginPath();
+    c.moveTo(x + rad, y);
+    c.arcTo(x + w, y, x + w, y + h, rad);
+    c.arcTo(x + w, y + h, x, y + h, rad);
+    c.arcTo(x, y + h, x, y, rad);
+    c.arcTo(x, y, x + w, y, rad);
+    c.closePath();
+  }
+  rrFelt(b, BX - 10, BY - 10, BRD + 20, BRD + 20, 16);
+  b.fillStyle = g; b.fill();
+  b.save(); rrFelt(b, BX - 10, BY - 10, BRD + 20, BRD + 20, 16); b.clip();             // 呢绒噪点
+  for (var i = 0; i < 1600; i++) {
+    b.fillStyle = "rgba(" + (Math.random() < 0.5 ? "255,255,255" : "0,0,0") + "," + (Math.random() * 0.05).toFixed(3) + ")";
+    b.fillRect(BX - 10 + Math.random() * (BRD + 20), BY - 10 + Math.random() * (BRD + 20), 1.4, 1.4);
+  }
+  b.restore();
+  b.strokeStyle = "rgba(0,0,0,.5)"; b.lineWidth = 2;
+  rrFelt(b, BX - 10, BY - 10, BRD + 20, BRD + 20, 16); b.stroke();
+  b.strokeStyle = "rgba(255,255,255,.14)"; b.lineWidth = 1;
+  rrFelt(b, BX - 8, BY - 8, BRD + 16, BRD + 16, 14); b.stroke();
+  b.strokeStyle = "rgba(0,0,0,.30)"; b.lineWidth = 1;                                   // 网格
+  for (var k = 0; k <= 8; k++) {
+    b.beginPath(); b.moveTo(BX + k * CELL, BY); b.lineTo(BX + k * CELL, BY + BRD); b.stroke();
+    b.beginPath(); b.moveTo(BX, BY + k * CELL); b.lineTo(BX + BRD, BY + k * CELL); b.stroke();
+  }
+  b.fillStyle = "rgba(0,0,0,.35)";                                                      // 星位
+  var stars = [[2, 2], [6, 2], [2, 6], [6, 6]];
+  for (var s = 0; s < stars.length; s++) {
+    b.beginPath(); b.arc(BX + stars[s][0] * CELL, BY + stars[s][1] * CELL, 2.6, 0, Math.PI * 2); b.fill();
+  }
+})();
+function rr(c, x, y, w, h, rad) {
+  c.beginPath();
+  c.moveTo(x + rad, y);
+  c.arcTo(x + w, y, x + w, y + h, rad);
+  c.arcTo(x + w, y + h, x, y + h, rad);
+  c.arcTo(x, y + h, x, y, rad);
+  c.arcTo(x, y, x + w, y, rad);
+  c.closePath();
+}
+function colX(c) { return BX + c * CELL + CELL / 2; }
+function rowY(r) { return BY + r * CELL + CELL / 2; }
+
+/* ================= 棋子绘制（象牙 / 墨玉，scaleX 翻转） ================= */
+function drawDisc(x, y, p, scaleX, alpha) {
+  var sx = Math.abs(scaleX);
+  if (sx < 0.04) sx = 0.04;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(0,0,0,.28)";               // 投影
+  ctx.beginPath(); ctx.ellipse(x + 1.5, y + 2.5, R * sx * 0.95, R * 0.92, 0, 0, Math.PI * 2); ctx.fill();
+  var g = ctx.createRadialGradient(x - R * 0.35, y - R * 0.42, R * 0.12, x, y, R);
+  if (p === 1) { g.addColorStop(0, "#59695f"); g.addColorStop(0.55, "#22302a"); g.addColorStop(1, "#0b1410"); }  // 墨玉
+  else { g.addColorStop(0, "#fffef6"); g.addColorStop(0.6, "#eee8d0"); g.addColorStop(1, "#c6bd9e"); }          // 象牙
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(x, y, R * sx, R, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = p === 1 ? "rgba(0,0,0,.55)" : "rgba(105,95,68,.45)";
+  ctx.beginPath(); ctx.ellipse(x, y, R * sx, R, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = alpha * 0.6 * Math.min(1, sx);  // 高光
+  ctx.fillStyle = p === 1 ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.9)";
+  ctx.beginPath(); ctx.ellipse(x - R * 0.32 * sx, y - R * 0.4, R * 0.3 * sx, R * 0.16, -0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function easeOutBack(x) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+
+/* ================= 渲染循环 ================= */
+function updateFX(dt) {
+  var i;
+  if (placeAnim) placeAnim.t += dt;
+  for (i = anims.length - 1; i >= 0; i--) anims[i].t += dt;
+  for (i = ripples.length - 1; i >= 0; i--) { ripples[i].t += dt; if (ripples[i].t > 0.6) ripples.splice(i, 1); }
+  if (flashCell) { flashCell.t += dt; if (flashCell.t > 0.4) flashCell = null; }
+}
+function render(t, dt) {
+  ctx.drawImage(boardLayer, 0, 0, W, H);
+  var skip = {}, i;
+  if (placeAnim) skip[placeAnim.idx] = true;
+  for (i = 0; i < anims.length; i++) skip[anims[i].idx] = true;
+  var c, r, idx, moves = null;
+  if (phase === "human") {                          // 合法落子点提示
+    moves = obLegalMoves(board, HUMAN);
+    for (i = 0; i < moves.length; i++) {
+      if (!hintOn && moves[i] !== hoverCell && moves[i] !== kbCell) continue;
+      idx = moves[i]; c = idx % 8; r = (idx / 8) | 0;
+      ctx.strokeStyle = "rgba(240,215,138,.55)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(colX(c), rowY(r), 8, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  if (phase === "human" && hoverCell >= 0 && board[hoverCell] === 0 && obHasFlip(board, hoverCell, HUMAN)) {
+    c = hoverCell % 8; r = (hoverCell / 8) | 0;     // 悬停高亮
+    ctx.fillStyle = "rgba(240,215,138,.13)";
+    ctx.fillRect(BX + c * CELL + 2, BY + r * CELL + 2, CELL - 4, CELL - 4);
+  }
+  if (phase === "human" && kbCell >= 0) {           // 键盘光标
+    c = kbCell % 8; r = (kbCell / 8) | 0;
+    ctx.strokeStyle = "rgba(240,215,138,.8)"; ctx.lineWidth = 2;
+    ctx.strokeRect(BX + c * CELL + 3.5, BY + r * CELL + 3.5, CELL - 7, CELL - 7);
+  }
+  if (flashCell) {                                  // 非法落点红闪
+    c = flashCell.idx % 8; r = (flashCell.idx / 8) | 0;
+    ctx.strokeStyle = "rgba(224,100,100," + (0.7 * (1 - flashCell.t / 0.4)).toFixed(3) + ")"; ctx.lineWidth = 3;
+    ctx.strokeRect(BX + c * CELL + 3, BY + r * CELL + 3, CELL - 6, CELL - 6);
+  }
+  for (idx = 0; idx < 64; idx++) {                  // 静止棋子
+    if (board[idx] === 0 || skip[idx]) continue;
+    c = idx % 8; r = (idx / 8) | 0;
+    drawDisc(colX(c), rowY(r), board[idx], 1, 1);
+  }
+  if (placeAnim) {                                  // 落子弹入
+    c = placeAnim.idx % 8; r = (placeAnim.idx / 8) | 0;
+    var pp = Math.min(1, placeAnim.t / PLACE_DUR);
+    drawDisc(colX(c), rowY(r), placeAnim.p, 0.55 + 0.45 * easeOutBack(pp), 1);
+  }
+  for (i = 0; i < anims.length; i++) {              // 3D 翻转（scaleX 余弦）
+    var a = anims[i];
+    c = a.idx % 8; r = (a.idx / 8) | 0;
+    var pr = a.t / FLIP_DUR;
+    if (pr <= 0) drawDisc(colX(c), rowY(r), a.from, 1, 1);
+    else if (pr >= 1) drawDisc(colX(c), rowY(r), a.to, 1, 1);
+    else {
+      var sx = Math.cos(pr * Math.PI);
+      drawDisc(colX(c), rowY(r), sx >= 0 ? a.from : a.to, Math.abs(sx), 1);
+    }
+  }
+  if (lastMove >= 0 && !skip[lastMove] && board[lastMove] !== 0) {   // 最后一步标记
+    c = lastMove % 8; r = (lastMove / 8) | 0;
+    ctx.fillStyle = "rgba(240,197,90,.95)";
+    ctx.beginPath(); ctx.arc(colX(c), rowY(r), 4, 0, Math.PI * 2); ctx.fill();
+  }
+  for (i = 0; i < ripples.length; i++) {            // 波纹扩散
+    var rp = ripples[i], al = Math.max(0, 0.5 * (1 - rp.t / 0.6));
+    ctx.strokeStyle = "rgba(240,215,138," + al.toFixed(3) + ")"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(rp.x, rp.y, 8 + rp.t * CELL * 3.1, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (passMsg) {                                    // pass 横幅
+    passMsg.t += dt;
+    var pa = passMsg.t < 0.15 ? passMsg.t / 0.15 : (passMsg.t > 0.85 ? Math.max(0, 1 - (passMsg.t - 0.85) / 0.15) : 1);
+    ctx.fillStyle = "rgba(5,12,9," + (0.72 * pa).toFixed(3) + ")";
+    rr(ctx, W / 2 - 158, H / 2 - 24, 316, 48, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(240,215,138," + (0.55 * pa).toFixed(3) + ")"; ctx.lineWidth = 1;
+    rr(ctx, W / 2 - 158, H / 2 - 24, 316, 48, 12); ctx.stroke();
+    ctx.fillStyle = "rgba(255,236,180," + pa.toFixed(3) + ")";
+    ctx.font = "700 15px -apple-system, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(passMsg.text, W / 2, H / 2);
+    ctx.textBaseline = "alphabetic";
+    if (passMsg.t > 1) passMsg = null;
+  }
+}
+var last = 0;
+function frame(t) {
+  var dt = Math.min((t - last) / 1000, 0.04); last = t;
+  updateFX(dt); render(t, dt);
+  requestAnimationFrame(frame);
+}
+
+/* ================= 对局流程 ================= */
+function setPhase(p) { phase = p; setTurnUI(); }
+function updateHUD() {
+  var c = obCounts(board);
+  document.getElementById("cntB").textContent = c.b;
+  document.getElementById("cntW").textContent = c.w;
+}
+function playMove(idx, p) {
+  var flips = obApply(board, idx, p);
+  if (!flips) { sInvalid(); return false; }
+  lastMove = idx;
+  var r0 = (idx / 8) | 0, c0 = idx % 8, maxD = 0, i;
+  var list = [];                                    // 按切比雪夫距离排序 → 波纹式依次翻转
+  for (i = 0; i < flips.length; i++) {
+    var d = Math.max(Math.abs(((flips[i] / 8) | 0) - r0), Math.abs(flips[i] % 8 - c0));
+    if (d > maxD) maxD = d;
+    list.push({ idx: flips[i], d: d });
+  }
+  list.sort(function (a, b) { return a.d - b.d; });
+  placeAnim = { idx: idx, p: p, t: 0 };
+  for (i = 0; i < list.length; i++) {
+    anims.push({ idx: list[i].idx, from: 3 - p, to: p, t: -list[i].d * STAGGER });
+    sFlip(list[i].d, list[i].d * STAGGER + FLIP_DUR * 0.4);
+  }
+  ripples.push({ x: colX(c0), y: rowY(r0), t: 0 });
+  sPlace();
+  updateHUD();
+  setPhase("anim");
+  var fid = flowId;
+  setTimeout(function () {
+    if (fid !== flowId) return;
+    placeAnim = null; anims = []; ripples = [];
+    var cc = obCounts(board);
+    if (cc.e === 0 || cc.b === 0 || cc.w === 0) endGame();   // 棋盘满 / 一方被清空
+    else beginTurn(3 - p);
+  }, (maxD * STAGGER + FLIP_DUR + 0.18) * 1000);
+  return true;
+}
+function beginTurn(p) {
+  if (phase !== "anim" && phase !== "human" && phase !== "ai") return;
+  var mv = obLegalMoves(board, p);
+  if (mv.length === 0) {                            // 无处合法落子 → pass
+    passStreak++;
+    var c = obCounts(board);
+    if (passStreak >= 2 || c.e === 0 || c.b === 0 || c.w === 0) { endGame(); return; }
+    passMsg = { text: (p === HUMAN ? "BLACK" : "WHITE") + " HAS NO MOVES — PASS", t: 0 };
+    sPass();
+    setPhase("anim");
+    var fid = flowId;
+    setTimeout(function () { if (fid === flowId && phase === "anim") beginTurn(3 - p); }, 1000);
+    return;
+  }
+  passStreak = 0;
+  if (p === HUMAN) { setPhase("human"); }
+  else aiMove();
+}
+function aiMove() {
+  setPhase("ai");
+  var fid = flowId;
+  setTimeout(function () {
+    if (fid !== flowId || phase !== "ai") return;
+    var mv = obChooseMove(board, AIP, difficulty);
+    if (mv < 0 || board[mv] !== 0) {                // 双保险：引擎异常时随机合法步
+      var ms = obLegalMoves(board, AIP);
+      mv = ms.length ? ms[(Math.random() * ms.length) | 0] : -1;
+      if (mv < 0) { beginTurn(HUMAN); return; }
+    }
+    playMove(mv, AIP);
+  }, 420 + Math.random() * 380);
+}
+function endGame() {
+  setPhase("over");
+  passMsg = null; anims = []; ripples = []; placeAnim = null;
+  var c = obCounts(board);
+  var res = c.b > c.w ? 1 : (c.w > c.b ? 2 : 0);
+  var s = stats[difficulty];
+  if (res === 1) { s.w++; sWin(); }
+  else if (res === 2) { s.l++; sLose(); }
+  else { s.d++; sDraw(); }
+  saveStats();
+  portalStop(res === 1);                            // 平台埋点：一局结束
+  setTimeout(function () { if (phase === "over") showResult(c, res); }, 900);
+}
+function showResult(c, res) {
+  var t = document.getElementById("resTitle");
+  t.className = res === 1 ? "win" : res === 2 ? "lose" : "draw";
+  t.textContent = res === 1 ? "YOU WIN!" : res === 2 ? "AI WINS" : "DRAW";
+  document.getElementById("resScore").textContent = "BLACK " + c.b + " \u00B7 " + c.w + " WHITE";
+  var total = c.b + c.w;
+  document.getElementById("barB").style.width = (total ? (c.b / total * 100) : 50).toFixed(1) + "%";
+  document.getElementById("barW").style.width = (total ? (c.w / total * 100) : 50).toFixed(1) + "%";
+  var s = stats[difficulty];
+  document.getElementById("resRecord").textContent = cap(difficulty) + " record — W " + s.w + " \u00B7 L " + s.l + " \u00B7 D " + s.d;
+  document.getElementById("result").classList.add("show");
+}
+function startGame() {
+  flowId++;
+  board = obNewBoard();
+  lastMove = -1; passStreak = 0;
+  anims = []; ripples = []; placeAnim = null; passMsg = null; flashCell = null; kbCell = -1;
+  document.getElementById("menu").classList.remove("show");
+  document.getElementById("result").classList.remove("show");
+  updateHUD();
+  portalStart();                                    // 平台埋点：开始一局
+  setPhase("human");
+}
+function toMenu() {
+  flowId++;
+  setPhase("menu");
+  anims = []; ripples = []; placeAnim = null; passMsg = null;
+  document.getElementById("result").classList.remove("show");
+  document.getElementById("menu").classList.add("show");
+  refreshMenuRecord();
+}
+
+/* ================= 平台 SDK 事件（域名守卫见头部 loader） ================= */
+function cgSDK() { try { return window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK; } catch (e) { return false; } }
+var portalActive = false;
+function portalStart() {
+  if (portalActive) return;
+  portalActive = true;
+  try { if (cgSDK()) window.CrazyGames.SDK.game.gameplayStart(); } catch (e) {}
+}
+function portalStop(didWin) {
+  if (!portalActive) return;
+  portalActive = false;
+  try {
+    if (cgSDK()) {
+      window.CrazyGames.SDK.game.gameplayStop();
+      if (didWin) window.CrazyGames.SDK.game.happytime();
+    }
+  } catch (e) {}
+}
+
+/* ================= HUD / 菜单 ================= */
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function recordStr(d) { var s = stats[d]; return "W " + s.w + " \u00B7 L " + s.l + " \u00B7 D " + s.d; }
+function refreshMenuRecord() { document.getElementById("menuRecord").textContent = cap(difficulty) + " record — " + recordStr(difficulty); }
+function setTurnUI() {
+  var el = document.getElementById("turn");
+  el.className = "";
+  if (phase === "human") { el.textContent = "YOUR TURN"; el.classList.add("you"); }
+  else if (phase === "ai") { el.textContent = "AI THINKING"; el.classList.add("ai", "dots"); }
+  else if (phase === "over") { el.textContent = "GAME OVER"; el.classList.add("off"); }
+  else { el.textContent = "OTHELLO PRO"; el.classList.add("off"); }
+}
+function bindSeg(id, cb) {
+  var seg = document.getElementById(id);
+  var btns = seg.querySelectorAll("button");
+  for (var i = 0; i < btns.length; i++) {
+    (function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        for (var j = 0; j < btns.length; j++) btns[j].classList.remove("on");
+        b.classList.add("on");
+        sClick();
+        cb(b.getAttribute("data-v"));
+      });
+    })(btns[i]);
+  }
+}
+bindSeg("segDiff", function (v) { difficulty = v; saveDiff(); refreshMenuRecord(); });
+document.getElementById("startBtn").addEventListener("click", function (e) { e.stopPropagation(); ensureAudio(); sClick(); startGame(); });
+document.getElementById("againBtn").addEventListener("click", function (e) { e.stopPropagation(); sClick(); startGame(); });
+document.getElementById("menuBtn").addEventListener("click", function (e) { e.stopPropagation(); sClick(); toMenu(); });
+var muteBtn = document.getElementById("muteBtn");
+var hintBtn = document.getElementById("hintBtn");
+function refreshMute() { muteBtn.className = muted ? "iconBtn off" : "iconBtn"; }
+function refreshHints() { hintBtn.className = hintOn ? "iconBtn" : "iconBtn off"; }
+muteBtn.addEventListener("click", function (e) {
+  e.stopPropagation();
+  muted = !muted; saveMuted(); refreshMute();
+  if (!muted) sClick();
+});
+hintBtn.addEventListener("click", function (e) {
+  e.stopPropagation();
+  hintOn = !hintOn; saveHints(); refreshHints(); sClick();
+});
+refreshMute(); refreshHints();
+
+/* ================= 输入（鼠标 + 触控 + 键盘） ================= */
+function cellFromXY(clientX, clientY) {
+  var rect = canvas.getBoundingClientRect();
+  var x = (clientX - rect.left) / rect.width * W;
+  var y = (clientY - rect.top) / rect.height * H;
+  var c = Math.floor((x - BX) / CELL), r = Math.floor((y - BY) / CELL);
+  if (c < 0 || c > 7 || r < 0 || r > 7) return -1;
+  return r * 8 + c;
+}
+function tryPlace(idx) {
+  if (phase !== "human" || idx < 0) return;
+  if (board[idx] !== 0 || !obHasFlip(board, idx, HUMAN)) {
+    sInvalid(); flashCell = { idx: idx, t: 0 };
+    return;
+  }
+  kbCell = -1;
+  playMove(idx, HUMAN);
+}
+canvas.addEventListener("mousemove", function (e) { hoverCell = cellFromXY(e.clientX, e.clientY); });
+canvas.addEventListener("mouseleave", function () { hoverCell = -1; });
+canvas.addEventListener("mousedown", function (e) { ensureAudio(); tryPlace(cellFromXY(e.clientX, e.clientY)); });
+canvas.addEventListener("touchstart", function (e) {
+  e.preventDefault(); ensureAudio();
+  tryPlace(cellFromXY(e.touches[0].clientX, e.touches[0].clientY));
+}, { passive: false });
+document.addEventListener("keydown", function (e) {
+  if (phase === "menu" || phase === "over") {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ensureAudio(); sClick(); startGame(); }
+    return;
+  }
+  if (phase !== "human") return;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+    e.preventDefault();
+    if (kbCell < 0) { kbCell = 27; return; }
+    var c = kbCell % 8, r = (kbCell / 8) | 0;
+    if (e.key === "ArrowLeft") c = Math.max(0, c - 1);
+    if (e.key === "ArrowRight") c = Math.min(7, c + 1);
+    if (e.key === "ArrowUp") r = Math.max(0, r - 1);
+    if (e.key === "ArrowDown") r = Math.min(7, r + 1);
+    kbCell = r * 8 + c;
+  } else if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    tryPlace(kbCell);
+  }
+});
+
+/* ================= 启动 ================= */
+board = obNewBoard();
+updateHUD();
+refreshMenuRecord();
+setTurnUI();
+requestAnimationFrame(frame);
+// 调试/测试钩子（不影响游戏逻辑）
+window.__ob = { get board() { return board; }, get phase() { return phase; }, get difficulty() { return difficulty; } };
+</script>
+</body>
+</html>
