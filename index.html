@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="description" content="Othello Pro — classic Reversi against a minimax AI with three difficulty levels, smooth 3D flip animations and local stats. Free single-file HTML5 board game.">
-<title>Othello Pro — Reversi vs AI</title>
+<meta name="description" content="Reversi Pro — classic Reversi against a minimax AI with three difficulty levels, smooth 3D flip animations and local stats. Free single-file HTML5 board game.">
+<title>Reversi Pro — Strategy Board Game vs AI</title>
 <script>
 // 平台 SDK 按域名条件加载（独立运行时完全不加载，游戏行为不变）
 (function () {
@@ -85,7 +85,7 @@
 <div id="wrap">
   <div id="hud">
     <div class="hudBox"><span class="discDot black"></span><span id="cntB">2</span></div>
-    <div id="turn" class="off">OTHELLO PRO</div>
+    <div id="turn" class="off">REVERSI PRO</div>
     <div class="hudBox right">
       <span id="cntW">2</span><span class="discDot white"></span>
       <button class="iconBtn" id="hintBtn" aria-label="Toggle move hints">&#9678;</button>
@@ -95,7 +95,7 @@
   <div class="stage">
     <canvas id="game"></canvas>
     <div class="overlay show" id="menu"><div class="panel">
-      <h1>OTHELLO PRO</h1>
+      <h1>REVERSI PRO</h1>
       <div class="sub">Sandwich discs to flip them. Most discs wins.</div>
       <div class="segLabel">DIFFICULTY</div>
       <div class="seg" id="segDiff">
@@ -116,7 +116,7 @@
       </div>
     </div></div>
   </div>
-  <div id="footer">Othello Pro — a free strategy board game</div>
+  <div id="footer">Reversi Pro — a free strategy board game</div>
 </div>
 <script>
 "use strict";
@@ -708,7 +708,7 @@ function setTurnUI() {
   if (phase === "human") { el.textContent = "YOUR TURN"; el.classList.add("you"); }
   else if (phase === "ai") { el.textContent = "AI THINKING"; el.classList.add("ai", "dots"); }
   else if (phase === "over") { el.textContent = "GAME OVER"; el.classList.add("off"); }
-  else { el.textContent = "OTHELLO PRO"; el.classList.add("off"); }
+  else { el.textContent = "REVERSI PRO"; el.classList.add("off"); }
 }
 function bindSeg(id, cb) {
   var seg = document.getElementById(id);
